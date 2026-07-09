@@ -17,6 +17,6 @@ module.exports = {
   DB_PASSWORD: 'admin',
   DB_NAME: 'taskless',
 
-  JWT_SECRET: 'taskless_dev_secret_change_in_prod_0e3f9a1b7c',
-  JWT_EXPIRES_IN: '7d',
+  // JWT_SECRET es requerido desde el entorno.
+  ACCESS_TOKEN_EXPIRES_IN: '15m',
 };

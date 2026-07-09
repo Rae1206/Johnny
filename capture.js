@@ -8,7 +8,7 @@ async function wait(ms) {
 }
 
 (async () => {
-  // Wait a bit to ensure frontend is fully loaded
+  // Esperar un poco para asegurar que el frontend cargó por completo
   await wait(3000);
   
   const browser = await chromium.launch({ headless: true });
@@ -44,20 +44,20 @@ async function wait(ms) {
   await wait(1000);
 
   console.log('Capturando 04-tablero-kanban...');
-  // Click on the first project's "Abrir tablero"
+  // Hacer click en "Abrir tablero" del primer proyecto
   await page.click('text=Abrir tablero');
   await page.waitForLoadState('networkidle');
   await wait(2000);
   await page.screenshot({ path: path.join(CAPTURAS_DIR, '04-tablero-kanban.png') });
   
   console.log('Capturando 07-detalle-tarea...');
-  // Click on the first task's title button
+  // Hacer click en el botón del título de la primera tarea
   const taskTitle = await page.$('button.text-left.text-sm');
   if (taskTitle) {
     await taskTitle.click();
     await wait(1000);
     await page.screenshot({ path: path.join(CAPTURAS_DIR, '07-detalle-tarea.png') });
-    // Click outside to close TaskDetailModal since it uses bg-black/50 for overlay
+    // Hacer click afuera para cerrar TaskDetailModal ya que usa bg-black/50 para el fondo
     await page.mouse.click(10, 10);
     await wait(1000);
   }
