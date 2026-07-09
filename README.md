@@ -1,5 +1,7 @@
 # Taskless — Gestor de Proyectos y Tareas (Kanban)
 
+**Repositorio:** [https://github.com/Rae1206/Johnny](https://github.com/Rae1206/Johnny)
+
 Aplicación web full-stack para gestionar proyectos y tareas con tablero Kanban,
 arrastre de tarjetas (drag & drop), autenticación con JWT y buenas prácticas de
 seguridad.
@@ -57,7 +59,7 @@ Elige **una** de estas opciones según tu sistema.
 ## Paso 2 — Descargar el proyecto
 
 ```bash
-git clone <url-del-repositorio>
+git clone https://github.com/Rae1206/Johnny.git
 cd Johnny
 ```
 
