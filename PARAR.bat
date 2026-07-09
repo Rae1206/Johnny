@@ -15,5 +15,9 @@ mysqladmin -u root -padmin shutdown >nul 2>&1
 REM Por si quedaron procesos mysqld colgados que no responden a shutdown:
 taskkill /F /IM mysqld.exe >nul 2>&1
 
+echo Cerrando ventanas de consola...
+taskkill /F /FI "WINDOWTITLE eq Taskless -*" >nul 2>&1
+
 echo.
-echo Todo detenido. Podes volver a arrancar con INICIAR.bat
+echo Todo detenido y ventanas cerradas. Podes volver a arrancar con INICIAR.bat
+
