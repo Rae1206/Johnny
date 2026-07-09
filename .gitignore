@@ -1,0 +1,25 @@
+# Dependencias (se regeneran con npm install)
+node_modules/
+**/node_modules/
+
+# Builds
+frontend/dist/
+
+# Variables de entorno reales
+.env
+**/.env
+.env.local
+
+# Logs
+*.log
+npm-debug.log*
+
+# Sistema
+.DS_Store
+Thumbs.db
+
+# NOTA: backend/config/local.js SÍ se sube a propósito (config de dev,
+# proyecto no sensible) para que clonar-y-ejecutar sea inmediato.
+
+# Documentación
+docs/

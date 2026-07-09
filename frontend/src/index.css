@@ -1,0 +1,52 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  @apply bg-brand-sage/20 text-brand-ink antialiased;
+}
+
+/* ============================================================
+   Modo oscuro. La app usa tokens de marca + superficies blancas;
+   acá remapeamos las superficies y textos clave cuando <html> tiene .dark.
+   ============================================================ */
+.dark body {
+  background-color: #15170f;
+  color: #eef2e4;
+}
+.dark .bg-white {
+  background-color: #20241a !important;
+}
+.dark .text-brand-ink {
+  color: #eef2e4 !important;
+}
+.dark .text-brand-forest {
+  color: #c3cdb4 !important;
+}
+.dark .text-brand-forest\/70,
+.dark .text-brand-forest\/50 {
+  color: #9aa78a !important;
+}
+.dark .border,
+.dark .border-b,
+.dark .border-t,
+.dark .border-brand-sage\/60,
+.dark .border-brand-sage\/50 {
+  border-color: rgba(207, 238, 158, 0.14) !important;
+}
+.dark .bg-brand-sage\/20 {
+  background-color: rgba(141, 171, 127, 0.12) !important;
+}
+/* Fondos claros de burbujas/inputs sobre superficie oscura */
+.dark input,
+.dark textarea,
+.dark select {
+  background-color: #1a1d13;
+  color: #eef2e4;
+}

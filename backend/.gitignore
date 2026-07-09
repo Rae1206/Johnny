@@ -1,0 +1,18 @@
+# Dependencias
+node_modules/
+
+# Variables de entorno reales (nunca se suben)
+.env
+.env.local
+
+# NOTA: config/local.js SÍ se sube al repo a propósito.
+# Sólo tiene credenciales de desarrollo local (proyecto no sensible),
+# para que quien clone pueda ejecutar sin configurar nada.
+
+# Logs
+*.log
+npm-debug.log*
+
+# Sistema
+.DS_Store
+Thumbs.db
