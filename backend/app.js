@@ -4,7 +4,6 @@
 const express = require('express');
 const helmet = require('helmet');
 const cors = require('cors');
-const rateLimit = require('express-rate-limit');
 
 const config = require('./config/env');
 const authRoutes = require('./routes/auth.routes');
@@ -15,6 +14,7 @@ const etiquetasRoutes = require('./routes/etiquetas.routes');
 const notificacionesRoutes = require('./routes/notificaciones.routes');
 const perfilRoutes = require('./routes/perfil.routes');
 const { notFound, errorHandler } = require('./middlewares/errorHandler');
+const { authLimiter } = require('./middlewares/rateLimiters');
 
 function createApp() {
   const app = express();
@@ -33,6 +33,7 @@ function createApp() {
   ];
   app.use(
     cors({
+      credentials: true,
       origin(origin, callback) {
         // Permitir requests sin Origin (curl, apps nativas) y los origenes de la lista.
         if (!origin || allowedOrigins.includes(origin)) return callback(null, true);
@@ -46,23 +47,9 @@ function createApp() {
   // 3) Parseo de JSON con limite de tamaño (evita payloads abusivos).
   app.use(express.json({ limit: '100kb' }));
 
-  // 4) RATE LIMITING en /api/auth/*: frena fuerza bruta.
-  //    Se desactiva en tests para no producir 429 en corridas rapidas.
-  const authLimiter = rateLimit({
-    windowMs: 15 * 60 * 1000,
-    max: 20,
-    standardHeaders: true,
-    legacyHeaders: false,
-    message: { error: 'Demasiados intentos. Intenta de nuevo mas tarde.' },
-  });
-
   app.get('/api/health', (_req, res) => res.json({ status: 'ok' }));
 
-  if (process.env.NODE_ENV === 'test') {
-    app.use('/api/auth', authRoutes);
-  } else {
-    app.use('/api/auth', authLimiter, authRoutes);
-  }
+  app.use('/api/auth', authLimiter, authRoutes);
   app.use('/api/proyectos', proyectosRoutes);
   app.use('/api/tareas', tareasRoutes);
   app.use('/api/equipos', equiposRoutes);

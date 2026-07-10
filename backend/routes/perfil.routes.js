@@ -3,9 +3,12 @@ const { body } = require('express-validator');
 const ctrl = require('../controllers/perfil.controller');
 const verifyToken = require('../middlewares/verifyToken');
 const { validate, sanitizeXSS } = require('../middlewares/validate');
+const { passwordPolicy } = require('../utils/passwordPolicy');
+const { protectedLimiter } = require('../middlewares/rateLimiters');
 
 const router = Router();
 router.use(verifyToken);
+router.use(protectedLimiter);
 
 router.get('/', ctrl.ver);
 router.put(
@@ -18,7 +21,7 @@ router.put(
   '/password',
   [
     body('actual').notEmpty().withMessage('Ingresá tu contraseña actual.'),
-    body('nueva').isLength({ min: 8 }).withMessage('La nueva contraseña debe tener al menos 8 caracteres.'),
+    passwordPolicy('nueva', 'La nueva contraseña'),
   ],
   validate,
   ctrl.cambiarPassword

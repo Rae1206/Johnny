@@ -1,16 +1,63 @@
-// Controlador de autenticacion: registro y login.
+// Controlador de autenticacion: registro, login, refresh y logout.
 const bcrypt = require('bcryptjs');
-const jwt = require('jsonwebtoken');
 const { pool } = require('../config/db');
-const config = require('../config/env');
+const {
+  buildPublicUser,
+  clearRefreshCookie,
+  extractRefreshToken,
+  generateRefreshToken,
+  generateRefreshFamilyId,
+  hashRefreshToken,
+  setRefreshCookie,
+  signAccessToken,
+} = require('../utils/authSession');
 
-// Genera un JWT firmado con los datos minimos del usuario.
-function firmarToken(usuario) {
-  return jwt.sign(
-    { id: usuario.id, email: usuario.email, rol: usuario.rol },
-    config.jwtSecret,
-    { expiresIn: config.jwtExpiresIn }
+const REFRESH_TOKEN_TTL_DAYS = 7;
+const REFRESH_TOKEN_TTL_MS = REFRESH_TOKEN_TTL_DAYS * 24 * 60 * 60 * 1000;
+
+function nowPlusRefreshTtl() {
+  return new Date(Date.now() + REFRESH_TOKEN_TTL_MS);
+}
+
+function refreshTokenPayload(userId, tokenHash, expiresAt, familyId, rotatedFromTokenId = null) {
+  return [userId, tokenHash, expiresAt, familyId, rotatedFromTokenId];
+}
+
+async function saveRefreshToken(connOrPool, userId, tokenHash, familyId, rotatedFromTokenId = null) {
+  const expiresAt = nowPlusRefreshTtl();
+  const executor = connOrPool.query.bind(connOrPool);
+  const [result] = await executor(
+    `INSERT INTO refresh_tokens (
+      user_id, token_hash, expires_at, family_id, revoked_at, rotated_at, rotated_from_token_id, replaced_by_token_id, last_used_at
+    ) VALUES (?, ?, ?, ?, NULL, NULL, ?, NULL, NULL)`,
+    refreshTokenPayload(userId, tokenHash, expiresAt, familyId, rotatedFromTokenId)
   );
+  return { refreshTokenId: result.insertId, expiresAt };
+}
+
+async function revokeRefreshFamily(conn, familyId) {
+  await conn.query(
+    `UPDATE refresh_tokens
+        SET revoked_at = COALESCE(revoked_at, NOW())
+      WHERE family_id = ?
+        AND revoked_at IS NULL
+        AND expires_at > NOW()`,
+    [familyId]
+  );
+}
+
+function issueSessionResponse(res, usuario, refreshToken) {
+  const accessToken = signAccessToken(usuario);
+  setRefreshCookie(res, refreshToken);
+  return res.json({ usuario: buildPublicUser(usuario), accessToken });
+}
+
+async function createSession(res, usuario, connOrPool = pool) {
+  const refreshToken = generateRefreshToken();
+  const refreshHash = hashRefreshToken(refreshToken);
+  const familyId = generateRefreshFamilyId();
+  await saveRefreshToken(connOrPool, usuario.id, refreshHash, familyId);
+  return issueSessionResponse(res, usuario, refreshToken);
 }
 
 // POST /api/auth/register
@@ -36,9 +83,10 @@ async function register(req, res, next) {
     );
 
     const usuario = { id: result.insertId, nombre, email, rol: 'miembro' };
-    const token = firmarToken(usuario);
 
-    return res.status(201).json({ usuario, token });
+    // return await (no solo return): sin await, un rechazo de createSession
+    // escaparia del try/catch y se volveria un unhandled rejection que tumba el proceso.
+    return await createSession(res.status(201), usuario);
   } catch (err) {
     next(err);
   }
@@ -66,18 +114,131 @@ async function login(req, res, next) {
       return res.status(401).json({ error: 'Credenciales invalidas.' });
     }
 
-    const publico = {
-      id: usuario.id,
-      nombre: usuario.nombre,
-      email: usuario.email,
-      rol: usuario.rol,
-    };
-    const token = firmarToken(publico);
-
-    return res.status(200).json({ usuario: publico, token });
+    // return await (no solo return): sin await, un rechazo de createSession
+    // escaparia del try/catch y se volveria un unhandled rejection que tumba el proceso.
+    return await createSession(res.status(200), usuario);
   } catch (err) {
     next(err);
   }
 }
 
-module.exports = { register, login };
+async function refresh(req, res, next) {
+  const presentedToken = extractRefreshToken(req);
+  if (!presentedToken) {
+    clearRefreshCookie(res);
+    return res.status(401).json({ error: 'Sesión expirada.' });
+  }
+
+  const tokenHash = hashRefreshToken(presentedToken);
+  const conn = await pool.getConnection();
+
+  try {
+    await conn.beginTransaction();
+
+    const [rows] = await conn.query(
+      `SELECT rt.id, rt.user_id, rt.family_id, rt.expires_at, rt.revoked_at, rt.replaced_by_token_id,
+              u.id AS usuario_id, u.nombre, u.email, u.rol
+         FROM refresh_tokens rt
+         INNER JOIN usuarios u ON u.id = rt.user_id
+        WHERE rt.token_hash = ?
+        FOR UPDATE`,
+      [tokenHash]
+    );
+
+    if (rows.length === 0) {
+      await conn.rollback();
+      clearRefreshCookie(res);
+      return res.status(401).json({ error: 'Sesión expirada.' });
+    }
+
+    const session = rows[0];
+    const usable = !session.revoked_at && !session.replaced_by_token_id && new Date(session.expires_at) > new Date();
+    if (!usable) {
+      await revokeRefreshFamily(conn, session.family_id);
+      await conn.commit();
+      clearRefreshCookie(res);
+      return res.status(401).json({ error: 'Sesión expirada.' });
+    }
+
+    const usuario = {
+      id: session.usuario_id,
+      nombre: session.nombre,
+      email: session.email,
+      rol: session.rol,
+    };
+
+    const nextRefreshToken = generateRefreshToken();
+    const nextRefreshHash = hashRefreshToken(nextRefreshToken);
+    const [insertResult] = await conn.query(
+      `INSERT INTO refresh_tokens (
+        user_id, token_hash, expires_at, family_id, revoked_at, rotated_at, rotated_from_token_id, replaced_by_token_id, last_used_at
+      ) VALUES (?, ?, ?, ?, NULL, NULL, ?, NULL, NOW())`,
+      [session.user_id, nextRefreshHash, nowPlusRefreshTtl(), session.family_id, session.id]
+    );
+
+    await conn.query(
+      `UPDATE refresh_tokens
+          SET revoked_at = COALESCE(revoked_at, NOW()),
+              rotated_at = COALESCE(rotated_at, NOW()),
+              replaced_by_token_id = ?,
+              last_used_at = NOW()
+        WHERE id = ?`,
+      [insertResult.insertId, session.id]
+    );
+
+    await conn.commit();
+
+    setRefreshCookie(res, nextRefreshToken);
+    return res.json({ usuario, accessToken: signAccessToken(usuario) });
+  } catch (err) {
+    try {
+      await conn.rollback();
+    } catch (_rollbackErr) {
+      // noop
+    }
+    return next(err);
+  } finally {
+    conn.release();
+  }
+}
+
+async function logout(req, res, next) {
+  const presentedToken = extractRefreshToken(req);
+  if (!presentedToken) {
+    clearRefreshCookie(res);
+    return res.status(204).end();
+  }
+
+  const tokenHash = hashRefreshToken(presentedToken);
+  let conn;
+
+  try {
+    conn = await pool.getConnection();
+    await conn.beginTransaction();
+
+    const [rows] = await conn.query(
+      'SELECT id, family_id FROM refresh_tokens WHERE token_hash = ? FOR UPDATE',
+      [tokenHash]
+    );
+
+    if (rows.length > 0) {
+      await revokeRefreshFamily(conn, rows[0].family_id);
+    }
+
+    await conn.commit();
+    clearRefreshCookie(res);
+    return res.status(204).end();
+  } catch (err) {
+    try {
+      if (conn) await conn.rollback();
+    } catch (_rollbackErr) {
+      // noop
+    }
+    clearRefreshCookie(res);
+    return next(err);
+  } finally {
+    if (conn) conn.release();
+  }
+}
+
+module.exports = { register, login, refresh, logout };

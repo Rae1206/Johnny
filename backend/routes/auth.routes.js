@@ -1,7 +1,8 @@
 const { Router } = require('express');
 const { body } = require('express-validator');
-const { register, login } = require('../controllers/auth.controller');
+const { register, login, refresh, logout } = require('../controllers/auth.controller');
 const { validate, sanitizeXSS } = require('../middlewares/validate');
+const { passwordPolicy } = require('../utils/passwordPolicy');
 
 const router = Router();
 
@@ -18,8 +19,7 @@ router.post(
       .trim()
       .isEmail().withMessage('Email invalido.')
       .normalizeEmail(),
-    body('password')
-      .isLength({ min: 8 }).withMessage('La contraseña debe tener al menos 8 caracteres.'),
+    passwordPolicy('password'),
   ],
   validate,
   register
@@ -35,5 +35,11 @@ router.post(
   validate,
   login
 );
+
+// POST /api/auth/refresh
+router.post('/refresh', refresh);
+
+// POST /api/auth/logout
+router.post('/logout', logout);
 
 module.exports = router;

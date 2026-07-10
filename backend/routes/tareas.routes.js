@@ -5,9 +5,11 @@ const comentarios = require('../controllers/comentarios.controller');
 const etiquetas = require('../controllers/etiquetas.controller');
 const verifyToken = require('../middlewares/verifyToken');
 const { validate, sanitizeXSS } = require('../middlewares/validate');
+const { protectedLimiter } = require('../middlewares/rateLimiters');
 
 const router = Router();
 router.use(verifyToken);
+router.use(protectedLimiter);
 
 const reglasCrear = [
   body('titulo')

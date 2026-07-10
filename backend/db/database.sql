@@ -24,6 +24,29 @@ CREATE TABLE usuarios (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ------------------------------------------------------------
+-- Tabla: refresh_tokens (sesiones opacas rotables)
+-- ------------------------------------------------------------
+CREATE TABLE refresh_tokens (
+  id                     INT AUTO_INCREMENT PRIMARY KEY,
+  user_id                INT NOT NULL,
+  token_hash             CHAR(64) NOT NULL UNIQUE,
+  expires_at             DATETIME NOT NULL,
+  family_id              CHAR(36) NOT NULL,
+  revoked_at             DATETIME NULL,
+  rotated_at             DATETIME NULL,
+  rotated_from_token_id  INT NULL,
+  replaced_by_token_id   INT NULL,
+  last_used_at           DATETIME NULL,
+  created_at             TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT fk_refresh_token_user
+    FOREIGN KEY (user_id) REFERENCES usuarios(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE INDEX idx_refresh_tokens_user ON refresh_tokens(user_id, expires_at);
+CREATE INDEX idx_refresh_tokens_hash ON refresh_tokens(token_hash);
+CREATE INDEX idx_refresh_tokens_family ON refresh_tokens(family_id, revoked_at, expires_at);
+
+-- ------------------------------------------------------------
 -- Tabla: equipos
 -- ------------------------------------------------------------
 CREATE TABLE equipos (
@@ -221,7 +244,7 @@ INSERT INTO tareas
   (1, 'Definir paleta de colores', 'Elegir colores primarios y de acento.', 'alta', 0, 0, 1, 1, 1, 2, '2026-07-20'),
   (2, 'Maquetar landing page',     'Hero, features y footer responsive.',   'media', 0, 1, 1, 1, 1, 3, '2026-07-25'),
   (3, 'Configurar Tailwind',       'Instalar y ajustar el tema base.',      'baja', 1, 0, 3, 1, 1, 1, NULL),
-  (4, 'Integrar API de auth',      'Login y registro con JWT.',             'alta', 0, 0, 2, 1, 1, 2, '2026-07-18'),
+  (4, 'Integrar API de auth',      'Login, refresh y logout con cookies seguras.', 'alta', 0, 0, 2, 1, 1, 2, '2026-07-18'),
   (5, 'Wireframes de pantallas',   'Bocetos de las 5 pantallas clave.',     'media', 0, 0, 4, 2, 1, NULL, '2026-07-22'),
   (6, 'Elegir stack móvil',        'React Native vs Flutter.',              'alta', 1, 0, 6, 2, 1, NULL, NULL),
   (7, 'Setup del repositorio',     'Monorepo con backend y app.',           'baja', 0, 1, 5, 2, 1, NULL, '2026-07-15');
@@ -240,8 +263,8 @@ INSERT INTO comentarios (tarea_id, usuario_id, texto) VALUES
   (1, 1, 'Arranquemos con tonos verdes tierra.'),
   (1, 2, 'Perfecto, subo una propuesta hoy a la tarde.'),
   (1, 3, 'Me sumo a la revisión cuando esté lista.'),
-  (4, 2, '¿Usamos JWT con expiración de 7 días?'),
-  (4, 1, 'Sí, y refresh manual desde el login. Dale.'),
+  (4, 2, '¿Usamos access token corto y refresh rotado?'),
+  (4, 1, 'Sí, 15 minutos para access y cookie HttpOnly para refresh.'),
   (2, 3, 'Empecé con el hero, mañana sigo con el footer.');
 
 -- Actividad de ejemplo (registro visible en el tablero)

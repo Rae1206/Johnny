@@ -3,6 +3,7 @@ import { useState } from 'react';
 import api from '../lib/api.js';
 import { useAuth } from '../context/AuthContext.jsx';
 import { iniciales } from '../lib/ui.js';
+import { PASSWORD_REQUIREMENTS, isStrongPassword, passwordErrorMessage } from '../lib/passwordPolicy.js';
 
 function Aviso({ tipo, children }) {
   if (!children) return null;
@@ -36,7 +37,7 @@ export default function ProfilePage() {
   async function cambiarPass(e) {
     e.preventDefault();
     setOkPass(''); setErrPass('');
-    if (pass.nueva.length < 8) return setErrPass('La nueva contraseña debe tener al menos 8 caracteres.');
+    if (!isStrongPassword(pass.nueva)) return setErrPass(passwordErrorMessage('La nueva contraseña'));
     try {
       await api.put('/perfil/password', pass);
       setOkPass('Contraseña actualizada.');
@@ -80,6 +81,7 @@ export default function ProfilePage() {
             className="rounded-lg border border-brand-sage/60 px-3 py-2 focus:border-brand-teal focus:outline-none" />
           <input type="password" value={pass.nueva} onChange={(e) => setPass({ ...pass, nueva: e.target.value })} placeholder="Nueva contraseña (mín. 8)"
             className="rounded-lg border border-brand-sage/60 px-3 py-2 focus:border-brand-teal focus:outline-none" />
+          <p className="text-xs text-brand-forest/70">{PASSWORD_REQUIREMENTS}</p>
           <div className="flex justify-end">
             <button type="submit" className="rounded-lg bg-brand-teal px-4 py-2 font-medium text-white hover:bg-brand-forest">Cambiar contraseña</button>
           </div>

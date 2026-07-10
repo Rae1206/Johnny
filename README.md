@@ -3,8 +3,8 @@
 **Repositorio:** [https://github.com/Rae1206/Johnny](https://github.com/Rae1206/Johnny)
 
 Aplicación web full-stack para gestionar proyectos y tareas con tablero Kanban,
-arrastre de tarjetas (drag & drop), autenticación con JWT y buenas prácticas de
-seguridad.
+arrastre de tarjetas (drag & drop), autenticación con access token corto en
+memoria + refresh cookie HttpOnly y buenas prácticas de seguridad.
 
 - **Frontend:** React 18 + Vite + Tailwind CSS + React Router + axios + `@hello-pangea/dnd`
 - **Backend:** Node.js + Express (API REST)
@@ -37,12 +37,12 @@ Elige **una** de estas opciones según tu sistema.
 
 1. Descarga XAMPP desde <https://www.apachefriends.org> e instálalo.
 2. Abre el **Panel de Control de XAMPP** y presiona **Start** en la fila de MySQL.
-3. Con eso ya tienes MySQL corriendo en `localhost:3306`, usuario `root` **sin contraseña**.
+3. Con eso ya tienes MySQL corriendo en `localhost:3306`.
 
 ### Windows / macOS / Linux (instalador oficial)
 
 - Descarga MySQL Community Server desde <https://dev.mysql.com/downloads/mysql/>.
-- Durante la instalación te pedirá definir una contraseña para el usuario `root`.
+- Durante la instalación te pedirá definir una contraseña para tu usuario MySQL.
   **Anótala**, la vas a necesitar en el Paso 3.
 
 ### Alternativa por línea de comandos
@@ -65,50 +65,29 @@ cd Johnny
 
 ---
 
-## Paso 3 — Configurar los datos de tu MySQL
+## Paso 3 — Arranque local de un clic (recomendado)
 
-Toda la configuración vive en **un solo archivo**: `backend/config/local.js`
-(no hay que crear ningún `.env`). Ábrelo y ajusta **solo** los datos de tu MySQL:
+1. Doble clic en `INICIAR.bat`.
+2. Si tu configuración apunta a MySQL local y está apagado, el script lo levanta solo.
 
-```js
-module.exports = {
-  PORT: 4000,
-  CLIENT_ORIGIN: 'http://localhost:5173',
+No hay preguntas ni asistente interactivo: el arranque usa la configuración efectiva de `backend/config/env.js` (defaults locales + `.env`), genera un `JWT_SECRET` local en `backend/.env` si falta y levanta la base configurada solo si todavía no existe.
 
-  DB_HOST: 'localhost',
-  DB_PORT: 3306,
-  DB_USER: 'root',        // <-- tu usuario de MySQL
-  DB_PASSWORD: 'admin',   // <-- tu contraseña de MySQL (vacía '' si usas XAMPP)
-  DB_NAME: 'taskless',
-
-  JWT_SECRET: 'taskless_dev_secret_change_in_prod_0e3f9a1b7c',
-  JWT_EXPIRES_IN: '7d',
-};
-```
-
-- Si instalaste con **XAMPP**, deja `DB_USER: 'root'` y `DB_PASSWORD: ''` (vacío).
-- Si usaste el **instalador oficial**, pon la contraseña que definiste.
-
-> Este es el único paso que cambia de una computadora a otra.
+> `backend/config/local.js` es el archivo editable y trackeado para los valores de desarrollo locales.
+> En producción, `.env` y las variables de entorno siguen teniendo prioridad.
 
 ---
 
-## Paso 4 — Backend: instalar, crear la base y arrancar
+## Paso 4 — Reset destructivo manual (opcional)
 
-En una terminal:
+Si querés reconstruir `taskless` desde cero, ejecutá:
 
 ```bash
 cd backend
-npm install       # instala las dependencias
-npm run setup     # crea la base 'taskless' con tablas y datos de ejemplo
-npm start         # inicia la API en http://localhost:4000
+npm run setup
 ```
 
-Deja esta terminal abierta (el servidor tiene que seguir corriendo).
-
-Si `npm run setup` falla, casi siempre es porque MySQL no está corriendo o
-porque el usuario/contraseña del Paso 3 no coinciden. El propio comando te dice
-qué revisar.
+Ese comando **sí** borra y recrea la base `taskless` usando `db/database.sql`.
+Es el único flujo destructivo del proyecto y no forma parte del arranque normal.
 
 ---
 
@@ -146,26 +125,16 @@ desde la pantalla de registro.
 
 ## Cómo iniciar la próxima vez
 
-Una vez hecha la instalación, para volver a usar la app solo hay que tener MySQL
-corriendo y ejecutar, en dos terminales:
+La forma normal es repetir `INICIAR.bat`. No pregunta nada y no depende de un bootstrap interactivo.
 
-```bash
-cd backend  && npm start      # API
-cd frontend && npm run dev    # App
-```
-
-> **Atajo en Windows:** el repositorio incluye `INICIAR.bat` y `PARAR.bat`.
-> `INICIAR.bat` es idempotente: solo arranca lo que no esté ya corriendo, así que
-> podés ejecutarlo varias veces sin crear instancias duplicadas (dos MySQL sobre
-> el mismo data directory, o dos backends en el mismo puerto, se pisan y fallan).
 > `PARAR.bat` apaga todo limpio para reiniciar sin procesos colgados.
-> (Con XAMPP, inicia MySQL desde su panel y luego usa los dos comandos de arriba.)
+> Si preferís abrir los procesos a mano, primero dejá listo `backend/.env` o usá los defaults de `backend/config/local.js`.
 
 ---
 
 ## Funcionalidades
 
-- **Autenticación:** registro y login con contraseñas hasheadas (bcrypt) y sesión JWT.
+- **Autenticación:** registro/login con access JWT de 15 minutos en memoria y refresh token opaco en cookie HttpOnly.
 - **Layout responsive:** sidebar (colapsable en móvil), header con notificaciones,
   tema claro/oscuro, avatar/perfil y cierre de sesión.
 - **Equipos:** crear equipos, invitar miembros por email, asignar roles
@@ -196,6 +165,8 @@ cd frontend && npm run dev    # App
 | ------ | --------------------------- | ------------------------------------ |
 | POST   | `/api/auth/register`        | Registro                             |
 | POST   | `/api/auth/login`           | Login                                |
+| POST   | `/api/auth/refresh`         | Renovar access token con cookie      |
+| POST   | `/api/auth/logout`          | Revocar refresh token y cerrar sesión |
 | GET    | `/api/proyectos`            | Listar proyectos del usuario         |
 | POST   | `/api/proyectos`            | Crear proyecto (+ columnas Kanban)   |
 | PUT    | `/api/proyectos/:id`        | Editar proyecto                      |
@@ -213,31 +184,29 @@ cd frontend && npm run dev    # App
 | GET/PUT | `/api/notificaciones[...]` | Notificaciones (marcar leídas)     |
 | GET/PUT | `/api/perfil[/password]`  | Perfil y cambio de contraseña        |
 
-Respuestas JSON con códigos HTTP correctos (200, 201, 400, 401, 403, 404, 500).
-La suite de tests (`npm test`) cubre 28 casos, incluido el aislamiento entre
-usuarios y equipos.
+Respuestas JSON con códigos HTTP correctos (200, 201, 204, 400, 401, 403, 404, 429, 500).
+La suite de tests (`npm test`) cubre autenticación, rotación de refresh,
+logout, validaciones, rate limiting y aislamiento entre usuarios y equipos.
 
 ---
 
 ## Seguridad implementada y vulnerabilidades mitigadas
 
-| # | Medida | Dónde | Vulnerabilidad mitigada |
-| - | ------ | ----- | ----------------------- |
-| 1 | **Consultas parametrizadas** (placeholders `?` de mysql2) en TODAS las queries | `controllers/*` | **SQL Injection** |
-| 2 | **Validación de formularios** — cliente (campos requeridos, email, longitud, feedback visual) y servidor (`express-validator` en cada POST/PUT) | `pages/*`, `routes/*` | Datos malformados, inyección de payloads |
-| 3 | **CORS restringido** al origen del frontend (`http://localhost:5173`), nunca `*` | `server.js` | Acceso cross-origin no autorizado |
-| 4 | **Hash de contraseñas** con bcrypt (10 salt rounds); nunca texto plano | `auth.controller.js` | **Exposición de credenciales** |
-| 5 | **Autenticación + autorización** — JWT (`verifyToken`) protege todas las rutas de proyectos/tareas; cada query filtra por `usuario_id` del token | `middlewares/verifyToken.js`, `controllers/*` | **Acceso no autorizado** a recursos ajenos |
-| 6 | **Configuración fuera del código de negocio** (`config/`), con `.env` real ignorado por git | `config/`, `.gitignore` | Secretos dispersos / hardcodeados |
-| 7 | **Helmet** — cabeceras HTTP seguras | `server.js` | **Cabeceras inseguras**, clickjacking, sniffing |
-| 8 | **Rate limiting** en `/api/auth/*` (20 intentos / 15 min por IP) | `server.js` | **Fuerza bruta** en login/registro |
-| 9 | **Sanitización de entradas** (neutraliza `<` y `>`) en campos de texto | `middlewares/validate.js` | **XSS** (Cross-Site Scripting) |
-| 10 | **Manejo centralizado de errores** — nunca se exponen stack traces al cliente | `middlewares/errorHandler.js` | Fuga de información interna |
+| Categoría | Riesgo previo | Mitigación aplicada |
+| --- | --- | --- |
+| Autenticación de sesión | Un JWT único y largo vivía en `localStorage`, así que podía robarse por XSS y duraba demasiado. | Access JWT de 15 minutos, devuelto solo en JSON y guardado solo en memoria React. |
+| Cookies y refresh | No había cookie segura ni rotación formal del refresh token. | Cookie `taskless_refresh_token` con `HttpOnly`, `Secure`, `SameSite=Strict`, `path=/api/auth`, `maxAge=7d`; refresh token opaco con hash SHA-256 en DB, rotación y revocación en `/api/auth/refresh` y `/api/auth/logout`; si un refresh revocado/rotado/reutilizado aparece, se revoca toda su familia válida. El access token puede seguir vivo hasta sus 15 minutos de expiración aunque el usuario haga logout; el cierre real de sesión revoca la familia de refresh. |
+| Abuso y brute force | Las rutas sensibles no tenían límites estrictos por operación. | `/api/auth/*`: 20 requests / 15 min. Rutas protegidas: 150 requests / min. |
+| Contraseñas | El alta/cambio aceptaba claves débiles. | Mínimo 8 caracteres, al menos una mayúscula y un número; el frontend muestra el requisito y el backend valida igual. |
+| JWT secret | El backend aceptaba un fallback conocido para firmar tokens. | `JWT_SECRET` se genera automáticamente en `backend/.env` con Node crypto; no se commitea. |
 
-> **Nota sobre la configuración:** en este proyecto de práctica, `backend/config/local.js`
-> se incluye en el repositorio a propósito (credenciales de desarrollo, no
-> sensibles) para que descargar y ejecutar sea inmediato. En un proyecto real,
-> ese archivo iría en `.gitignore` y cada persona pondría sus propios secretos.
+Además se mantienen las defensas base del proyecto: consultas parametrizadas, CORS restringido, Helmet, sanitización de entrada y manejo centralizado de errores.
+
+> **Nota importante:** las cookies `Secure` del flujo de refresh requieren HTTPS en un navegador real. Si montás el frontend/backend fuera de `localhost`, usá TLS o un proxy HTTPS.
+
+> **Nota sobre la configuración:** `backend/config/local.js` trae los defaults locales editables (incluida la DB `taskless`); `backend/.env` y las variables de entorno siguen sobreescribiendo esos valores. `INICIAR.bat` y `scripts/init-local-db.js` leen esa misma configuración efectiva, sin prompts.
+>
+> **Nota operativa:** si venís de una instalación anterior, borrá o regenerá `backend/.env` (al menos `JWT_SECRET`) una vez después de actualizar para que `INICIAR.bat` cree una clave nueva por instalación.
 >
 > Sobre bcrypt: se usa `bcryptjs` (implementación JS pura, compatible con los
 > hashes de `bcrypt`) para evitar problemas de compilación de módulos nativos en
@@ -258,7 +227,7 @@ npm test
 
 Los tests corren contra una base **separada** (`taskless_test`) que se crea y
 siembra automáticamente desde `db/database.sql`, por lo que **no tocan tus datos**
-de `taskless`. Requieren un MySQL corriendo con las credenciales de `config/local.js`.
+de `taskless`.
 
 ---
 
@@ -269,19 +238,22 @@ de `taskless`. Requieren un MySQL corriendo con las credenciales de `config/loca
 ├── INICIAR.bat                 # (Windows) arranque de un clic
 ├── backend/
 │   ├── config/
-│   │   ├── env.js              # configuración central (defaults + local.js + .env)
-│   │   └── local.js            # datos de MySQL a editar
+│   │   ├── env.js              # configuración central (backend/.env + local.js)
+│   │   ├── local.js            # defaults locales editables para desarrollo
+│   │   └── .env.example        # plantilla local sin credenciales reales
 │   ├── controllers/            # lógica de auth, proyectos y tareas
 │   ├── db/database.sql         # esquema + datos de ejemplo
-│   ├── middlewares/            # verifyToken, validate, errorHandler
+│   ├── middlewares/            # verifyToken, validate, rateLimiters, errorHandler
 │   ├── routes/                 # endpoints + validación
-│   ├── scripts/setup-db.js     # crea e importa la base (npm run setup)
+│   ├── scripts/ensure-local-env.js # genera JWT_SECRET local en backend/.env
+│   ├── scripts/init-local-db.js # inicializador seguro: crea/importa solo si falta
+│   ├── scripts/setup-db.js     # reset destructivo explícito (npm run setup)
 │   ├── package.json
 │   └── server.js               # Helmet, CORS, rate limit, arranque
 └── frontend/
     ├── src/
     │   ├── components/          # Layout, TaskModal
-    │   ├── context/            # AuthContext (JWT en localStorage)
+    │   ├── context/            # AuthContext (access token en memoria)
     │   ├── lib/                # axios + helpers de UI
     │   ├── pages/              # Login, Register, Projects, Board, Tasks
     │   ├── App.jsx             # rutas + guardia de rutas protegidas

@@ -8,7 +8,8 @@
     "start": "node server.js",
     "dev": "node --watch server.js",
     "setup": "node scripts/setup-db.js",
-    "test": "node --test test/api.test.js"
+    "setup:env": "node scripts/ensure-local-env.js",
+    "test": "node --test"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",

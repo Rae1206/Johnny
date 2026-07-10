@@ -62,9 +62,9 @@ export default function Layout() {
   const navigate = useNavigate();
   const [mobileOpen, setMobileOpen] = useState(false);
 
-  function handleLogout() {
-    logout();
-    navigate('/login');
+  async function handleLogout() {
+    await logout();
+    navigate('/login', { replace: true });
   }
 
   return (

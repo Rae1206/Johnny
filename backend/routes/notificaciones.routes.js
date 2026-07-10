@@ -3,9 +3,11 @@ const { param } = require('express-validator');
 const ctrl = require('../controllers/notificaciones.controller');
 const verifyToken = require('../middlewares/verifyToken');
 const { validate } = require('../middlewares/validate');
+const { protectedLimiter } = require('../middlewares/rateLimiters');
 
 const router = Router();
 router.use(verifyToken);
+router.use(protectedLimiter);
 
 router.get('/', ctrl.listar);
 router.put('/leer-todas', ctrl.marcarTodas);

@@ -1,12 +1,8 @@
-// Configuracion de desarrollo (reemplaza al .env en este entorno).
-// Este archivo SÍ se sube al repo a proposito, para que clonar-y-ejecutar
-// sea inmediato. Es un proyecto no sensible con credenciales de dev.
+// LOCAL DEVELOPMENT ONLY.
 //
-// >> SI CLONASTE ESTE REPO: ajusta DB_USER / DB_PASSWORD / DB_PORT abajo
-//    para que coincidan con TU servidor MySQL local. Es lo unico que cambia
-//    de una maquina a otra. Despues corre:  npm install && npm run setup && npm start
-//
-// NUNCA usar estos valores en produccion.
+// Este archivo se sube a proposito para que un checkout nuevo tenga valores
+// locales editables en un solo lugar. Produccion debe sobreescribir estos datos
+// con variables de entorno o backend/.env.
 module.exports = {
   PORT: 4000,
   CLIENT_ORIGIN: 'http://localhost:5173',
@@ -17,6 +13,5 @@ module.exports = {
   DB_PASSWORD: 'admin',
   DB_NAME: 'taskless',
 
-  // JWT_SECRET es requerido desde el entorno.
   ACCESS_TOKEN_EXPIRES_IN: '15m',
 };

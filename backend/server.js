@@ -1,9 +1,33 @@
 // ============================================================
 //  Taskless — Arranque del servidor (API REST)
 // ============================================================
-const config = require('./config/env');
-const createApp = require('./app');
-const { assertConnection } = require('./config/db');
+function loadStartupModules() {
+  try {
+    const config = require('./config/env');
+    const createApp = require('./app');
+    const { assertConnection } = require('./config/db');
+    return { config, createApp, assertConnection };
+  } catch (err) {
+    if (String(err?.message || '').includes('[config]')) {
+      console.error(err.message);
+      console.error('Ejecuta INICIAR.bat para generar backend/.env y completar la configuracion guiada.');
+      process.exit(1);
+    }
+    throw err;
+  }
+}
+
+const { config, createApp, assertConnection } = loadStartupModules();
+
+// Red de seguridad: si alguna promesa rechaza sin capturarse (p.ej. un error
+// de base en un handler que se escapo del try/catch), logueamos y seguimos vivos
+// en vez de dejar que Node mate el proceso en medio de una peticion.
+process.on('unhandledRejection', (reason) => {
+  console.error('[unhandledRejection] Promesa rechazada sin capturar:', reason);
+});
+process.on('uncaughtException', (err) => {
+  console.error('[uncaughtException] Excepcion no capturada:', err);
+});
 
 const app = createApp();
 const PORT = config.port;
@@ -50,7 +74,7 @@ async function esperarMySQL(reintentos = 30, esperaMs = 1500) {
     });
   } catch (err) {
     console.error('[X] No se pudo conectar a MySQL tras varios intentos:', err.code || err.message);
-    console.error('  Revisa tu configuracion (backend/config/local.js) y que MySQL este corriendo.');
+    console.error('  Revisa tu configuracion de entorno (DB_HOST/DB_USER/DB_PASSWORD/DB_NAME) y que MySQL este corriendo.');
     process.exit(1);
   }
 })();

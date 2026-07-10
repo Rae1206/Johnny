@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext.jsx';
+import { PASSWORD_REQUIREMENTS, isStrongPassword, passwordErrorMessage } from '../lib/passwordPolicy.js';
 
 export default function Register() {
   const { register } = useAuth();
@@ -14,7 +15,7 @@ export default function Register() {
     const e = {};
     if (form.nombre.trim().length < 2) e.nombre = 'El nombre debe tener al menos 2 caracteres.';
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) e.email = 'Email invalido.';
-    if (form.password.length < 8) e.password = 'La contraseña debe tener al menos 8 caracteres.';
+    if (!isStrongPassword(form.password)) e.password = passwordErrorMessage();
     setErrores(e);
     return Object.keys(e).length === 0;
   }
@@ -79,6 +80,7 @@ export default function Register() {
             {errores.password && (
               <p className="mt-1 text-xs text-brand-forest">{errores.password}</p>
             )}
+            <p className="mt-1 text-xs text-brand-forest/70">{PASSWORD_REQUIREMENTS}</p>
           </div>
 
           <button

@@ -1,7 +1,13 @@
 // Suite de integracion de la API Taskless.
 // Fijar entorno de test ANTES de requerir la app/config.
+const crypto = require('node:crypto');
+
 process.env.NODE_ENV = 'test';
+process.env.PORT = process.env.PORT || '4100';
+process.env.CLIENT_ORIGIN = process.env.CLIENT_ORIGIN || 'http://localhost:5173';
 process.env.DB_NAME = 'taskless_test';
+process.env.JWT_SECRET = process.env.JWT_SECRET || crypto.randomBytes(32).toString('hex');
+process.env.ACCESS_TOKEN_EXPIRES_IN = process.env.ACCESS_TOKEN_EXPIRES_IN || '15m';
 
 const { test, before, after } = require('node:test');
 const assert = require('node:assert/strict');
@@ -9,7 +15,8 @@ const request = require('supertest');
 
 const createApp = require('../app');
 const { pool } = require('../config/db');
-const { setupTestDb } = require('./helpers/db');
+const { setupTestDb } = require('../test-support/db');
+const { resetRateLimitBuckets } = require('../middlewares/rateLimiters');
 
 const app = createApp();
 
@@ -20,19 +27,35 @@ let proyectoNuevoId;
 let tareaDemoId;
 let tareaEquipoId;
 
+function cookieHeaderFromResponse(res) {
+  return res.headers['set-cookie']?.[0]?.split(';')[0];
+}
+
+function assertRefreshCookieFlags(cookie) {
+  assert.ok(cookie.includes('taskless_refresh_token='));
+  assert.match(cookie, /HttpOnly/i);
+  assert.match(cookie, /Secure/i);
+  assert.match(cookie, /SameSite=Strict/i);
+  assert.match(cookie, /Path=\/api\/auth/i);
+}
+
 async function login(email, password = 'Demo1234') {
   const res = await request(app).post('/api/auth/login').send({ email, password });
-  return res.body.token;
+  return {
+    accessToken: res.body.accessToken,
+    cookie: cookieHeaderFromResponse(res),
+    response: res,
+  };
 }
 
 before(async () => {
   await setupTestDb();
-  tDemo = await login('demo@taskless.com');
-  tAna = await login('ana@taskless.com');
+  tDemo = (await login('demo@taskless.com')).accessToken;
+  tAna = (await login('ana@taskless.com')).accessToken;
   const reg = await request(app)
     .post('/api/auth/register')
     .send({ nombre: 'Bob', email: 'bob@test.com', password: 'Bob12345' });
-  tBob = reg.body.token;
+  tBob = reg.body.accessToken;
 });
 
 after(async () => {
@@ -48,7 +71,30 @@ test('GET /api/health -> 200', async () => {
 test('login demo -> 200 + token', async () => {
   const r = await request(app).post('/api/auth/login').send({ email: 'demo@taskless.com', password: 'Demo1234' });
   assert.equal(r.status, 200);
-  assert.ok(r.body.token);
+  assert.ok(r.body.accessToken);
+  assert.ok(r.body.usuario);
+  assert.equal(r.body.refreshToken, undefined);
+  const cookie = cookieHeaderFromResponse(r);
+  assert.ok(cookie);
+  assertRefreshCookieFlags(r.headers['set-cookie'][0]);
+});
+
+test('register demo-style password -> 201 + cookie + access token', async () => {
+  const email = `test-${Date.now()}@test.com`;
+  const r = await request(app).post('/api/auth/register').send({ nombre: 'Test User', email, password: 'TestUser1' });
+  assert.equal(r.status, 201);
+  assert.ok(r.body.accessToken);
+  assert.ok(r.body.usuario);
+  assert.equal(r.body.refreshToken, undefined);
+  assertRefreshCookieFlags(r.headers['set-cookie'][0]);
+});
+
+test('register password sin mayúscula o número -> 400', async () => {
+  const email = `weak-${Date.now()}@test.com`;
+  const r = await request(app).post('/api/auth/register').send({ nombre: 'Weak', email, password: 'weakpass' });
+  assert.equal(r.status, 400);
+  assert.match(JSON.stringify(r.body), /mayúscula/i);
+  assert.match(JSON.stringify(r.body), /número/i);
 });
 
 test('login password incorrecta -> 401', async () => {
@@ -63,6 +109,54 @@ test('register email duplicado -> 400', async () => {
 
 test('GET /api/proyectos sin token -> 401', async () => {
   assert.equal((await request(app).get('/api/proyectos')).status, 401);
+});
+
+test('refresh replay revoca toda la familia y fuerza reauth', async () => {
+  const loginResult = await login('demo@taskless.com');
+  const refresh1 = await request(app).post('/api/auth/refresh').set('Cookie', loginResult.cookie);
+  assert.equal(refresh1.status, 200);
+  assert.ok(refresh1.body.accessToken);
+  assert.ok(refresh1.body.usuario);
+  assert.equal(refresh1.body.refreshToken, undefined);
+  assertRefreshCookieFlags(refresh1.headers['set-cookie'][0]);
+
+  const cookie2 = cookieHeaderFromResponse(refresh1);
+  const refresh2 = await request(app).post('/api/auth/refresh').set('Cookie', cookie2);
+  assert.equal(refresh2.status, 200);
+  assert.ok(refresh2.body.accessToken);
+
+  const cookie3 = cookieHeaderFromResponse(refresh2);
+  const replay = await request(app).post('/api/auth/refresh').set('Cookie', loginResult.cookie);
+  assert.equal(replay.status, 401);
+
+  const descendantAfterReplay = await request(app).post('/api/auth/refresh').set('Cookie', cookie3);
+  assert.equal(descendantAfterReplay.status, 401);
+});
+
+test('logout revoca refresh token y limpia la cookie', async () => {
+  const loginResult = await login('ana@taskless.com');
+  const logout = await request(app).post('/api/auth/logout').set('Cookie', loginResult.cookie);
+  assert.equal(logout.status, 204);
+  assert.ok(logout.headers['set-cookie']);
+  assert.match(logout.headers['set-cookie'][0], /Expires=Thu, 01 Jan 1970 00:00:00 GMT/i);
+  assert.match(logout.headers['set-cookie'][0], /Path=\/api\/auth/i);
+
+  const refreshAfterLogout = await request(app).post('/api/auth/refresh').set('Cookie', loginResult.cookie);
+  assert.equal(refreshAfterLogout.status, 401);
+});
+
+test('refresh trata cookies con encoding inválido como ausentes', async () => {
+  const r = await request(app)
+    .post('/api/auth/refresh')
+    .set('Cookie', 'taskless_refresh_token=%E0%A4%A');
+  assert.equal(r.status, 401);
+});
+
+test('logout trata cookies con encoding inválido como ausentes', async () => {
+  const r = await request(app)
+    .post('/api/auth/logout')
+    .set('Cookie', 'taskless_refresh_token=%E0%A4%A');
+  assert.equal(r.status, 204);
 });
 
 // ---------------- Proyectos ----------------
@@ -200,6 +294,12 @@ test('cambiar contraseña con actual incorrecta -> 400', async () => {
   assert.equal(r.status, 400);
 });
 
+test('cambiar contraseña rechaza nueva contraseña débil -> 400', async () => {
+  const r = await request(app).put('/api/perfil/password').set('Authorization', `Bearer ${tBob}`).send({ actual: 'Bob12345', nueva: 'nouppers1' });
+  assert.equal(r.status, 400);
+  assert.match(JSON.stringify(r.body), /mayúscula/i);
+});
+
 test('editar nombre de perfil -> 200', async () => {
   const r = await request(app).put('/api/perfil').set('Authorization', `Bearer ${tBob}`).send({ nombre: 'Bob Editado' });
   assert.equal(r.status, 200);
@@ -215,4 +315,34 @@ test('DELETE tarea propia -> 200', async () => {
 test('ruta inexistente -> 404', async () => {
   const r = await request(app).get('/api/no-existe').set('Authorization', `Bearer ${tDemo}`);
   assert.equal(r.status, 404);
+});
+
+test('auth routes están limitadas a 20 requests por 15 min', async () => {
+  await resetRateLimitBuckets();
+
+  const attempts = [];
+  for (let i = 0; i < 20; i += 1) {
+    attempts.push(await request(app).post('/api/auth/login').send({ email: 'demo@taskless.com', password: 'bad-password' }));
+  }
+
+  assert.ok(attempts.every((r) => r.status === 401));
+
+  const blocked = await request(app)
+    .post('/api/auth/login')
+    .send({ email: 'demo@taskless.com', password: 'bad-password' });
+  assert.equal(blocked.status, 429);
+});
+
+test('rutas protegidas están limitadas a 150 requests por minuto', async () => {
+  await resetRateLimitBuckets();
+
+  const attempts = [];
+  for (let i = 0; i < 150; i += 1) {
+    attempts.push(await request(app).get('/api/perfil').set('Authorization', `Bearer ${tDemo}`));
+  }
+
+  assert.ok(attempts.every((r) => r.status === 200));
+
+  const blocked = await request(app).get('/api/perfil').set('Authorization', `Bearer ${tDemo}`);
+  assert.equal(blocked.status, 429);
 });
