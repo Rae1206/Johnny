@@ -1,5 +1,5 @@
-# CodeGraph data files — local to each machine, not for committing.
-# Ignore everything in .codegraph/ except this file itself, so transient
-# files (the database, daemon.pid, sockets, logs) never show up in git.
+# Archivos de datos de CodeGraph — locales para cada máquina, no para hacer commit.
+# Ignorar todo en .codegraph/ excepto este mismo archivo, para que los archivos
+# transitorios (la base de datos, daemon.pid, sockets, logs) nunca aparezcan en git.
 *
 !.gitignore

@@ -520,7 +520,7 @@ async function readTableCount(connection, databaseName, tableName) {
 
 async function run() {
   const config = readRuntimeDbConfig();
-  // Cold start (InnoDB crash recovery) can take ~1 min; retry generously.
+  // El inicio en frío (recuperación de caídas de InnoDB) puede tardar ~1 min; reintentar generosamente.
   const connection = await createConnection(20, 2000);
 
   try {

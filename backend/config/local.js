@@ -1,4 +1,4 @@
-// LOCAL DEVELOPMENT ONLY.
+// SOLO DESARROLLO LOCAL.
 //
 // Este archivo se sube a proposito para que un checkout nuevo tenga valores
 // locales editables en un solo lugar. Produccion debe sobreescribir estos datos
